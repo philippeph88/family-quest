@@ -7,7 +7,7 @@
 #include <fstream>
 
 struct User { std::string name; int points; };
-struct Quest { int id; std::string desc; int xp; bool done; };
+struct Quest { int id; std::string desc; int xp; }; // done entfernt
 
 std::map<std::string, User> family = {
     {"Mami", {"Mami", 0}}, {"Papi", {"Papi", 0}},
@@ -15,21 +15,19 @@ std::map<std::string, User> family = {
 };
 
 std::vector<Quest> quests = {
-    {1, "Spuelmaschine ausraeumen 🍽️", 50, false},
-    {2, "Muell rausbringen 🗑️", 20, false},
-    {3, "Zimmer aufraeumen ✨", 100, false},
-    {4, "Tisch decken 🍴", 15, false},
-    {5, "Philippe hat Sachen von der Treppe mitgenommen 📦", 30, false}
+    {1, "Spuelmaschine ausraeumen 🍽️", 50},
+    {2, "Muell rausbringen 🗑️", 20},
+    {3, "Zimmer aufraeumen ✨", 100},
+    {4, "Tisch decken 🍴", 15},
+    {5, "Philippe hat Sachen von der Treppe mitgenommen 📦", 30}
 };
 
 std::mutex dataMutex;
 
-// Speichern & Laden (Damit die Cloud nichts vergisst)
 void save_to_file() {
     std::ofstream file("speicher.txt");
     if (file.is_open()) {
         for (auto const& [name, user] : family) file << "U:" << name << ":" << user.points << "\n";
-        for (auto const& q : quests) file << "Q:" << q.id << ":" << (q.done ? "1" : "0") << "\n";
     }
 }
 
@@ -42,11 +40,6 @@ void load_from_file() {
                 size_t p = line.find(':', 2);
                 std::string n = line.substr(2, p - 2);
                 if (family.count(n)) family[n].points = std::stoi(line.substr(p + 1));
-            } else if (line.substr(0, 2) == "Q:") {
-                size_t p = line.find(':', 2);
-                int id = std::stoi(line.substr(2, p - 2));
-                int d = std::stoi(line.substr(p + 1));
-                for (auto& q : quests) if (q.id == id) q.done = (d == 1);
             }
         } catch(...) {}
     }
@@ -72,12 +65,10 @@ std::string get_html() {
                 document.getElementById('status').innerHTML=s;
                 let qh='<h2>📜 Missionen</h2>';
                 data.quests.forEach(q=>{
-                    if(!q.done){
-                        qh+='<div class="card"><h3>'+q.desc+'</h3>';
-                        if(q.desc.includes('Treppe')){ qh+='<button onclick=\"doit('+q.id+',\'Philippe\')\">Philippe war\'s!</button>'; }
-                        else { ['Mami','Papi','Nathalie','Philippe'].forEach(u=>{ qh+='<button onclick=\"doit('+q.id+',\''+u+'\')\">'+u+'</button>'; }); }
-                        qh+='</div>';
-                    }
+                    qh+='<div class="card"><h3>'+q.desc+'</h3><p class="xp">'+q.xp+' XP</p>';
+                    if(q.desc.includes('Treppe')){ qh+='<button onclick=\"doit('+q.id+',\'Philippe\')\">Philippe war\'s!</button>'; }
+                    else { ['Mami','Papi','Nathalie','Philippe'].forEach(u=>{ qh+='<button onclick=\"doit('+q.id+',\''+u+'\')\">'+u+'</button>'; }); }
+                    qh+='</div>';
                 });
                 document.getElementById('quests').innerHTML=qh;
             });
@@ -92,8 +83,6 @@ std::string get_html() {
 int main() {
     load_from_file();
     httplib::Server svr;
-    
-    // WICHTIG FÜR DIE CLOUD: Den Port automatisch wählen
     const char* port_env = std::getenv("PORT");
     int port = port_env ? std::stoi(port_env) : 8080;
 
@@ -104,7 +93,7 @@ int main() {
         for(auto const& [n, u] : family) j += "\"" + n + "\":" + std::to_string(u.points) + ",";
         if(j.back()==',') j.pop_back();
         j += "},\"quests\":[";
-        for(auto const& q : quests) j += "{\"id\":" + std::to_string(q.id) + ",\"desc\":\"" + q.desc + "\",\"xp\":" + std::to_string(q.xp) + ",\"done\":" + (q.done ? "true" : "false") + "},";
+        for(auto const& q : quests) j += "{\"id\":" + std::to_string(q.id) + ",\"desc\":\"" + q.desc + "\",\"xp\":" + std::to_string(q.xp) + "},";
         if(j.back()==',') j.pop_back();
         j += "]}";
         res.set_content(j, "application/json");
@@ -114,12 +103,10 @@ int main() {
         try {
             int id = std::stoi(req.path_params.at("id"));
             std::string user = req.path_params.at("user");
-            for(auto& q : quests){ if(q.id == id && !q.done){ q.done = true; family[user].points += q.xp; save_to_file(); } }
+            for(auto& q : quests){ if(q.id == id){ family[user].points += q.xp; save_to_file(); } }
         } catch(...) {}
         res.set_content("ok", "text/plain");
     });
-
-    std::cout << "Server startet auf Port " << port << std::endl;
     svr.listen("0.0.0.0", port);
     return 0;
 }
